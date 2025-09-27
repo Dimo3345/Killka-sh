@@ -7,7 +7,7 @@ local HttpService = game:GetService("HttpService")
 local playerWhitelist = {}
 local ATTACK_DELAY = 0.05
 local TOOL_NAME = "Punch"
-local AUTO_HOP_DELAY = 5
+local AUTO_HOP_DELAY = 50
 local placeId = game.PlaceId
 
 local function getPunchTool()
