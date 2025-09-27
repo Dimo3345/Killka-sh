@@ -1,0 +1,152 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local playerWhitelist = {}
+local ATTACK_DELAY = 0.05
+local TOOL_NAME = "Punch"
+local AUTO_HOP_DELAY = 5
+local placeId = game.PlaceId
+
+local function getPunchTool()
+    local character = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not character or not backpack then return nil end
+    local tool = character:FindFirstChild(TOOL_NAME)
+    if tool and tool:IsA("Tool") then return tool end
+    tool = backpack:FindFirstChild(TOOL_NAME)
+    if tool and tool:IsA("Tool") then return tool end
+    return nil
+end
+
+local function equipPunchTool()
+    local tool = getPunchTool()
+    local character = LocalPlayer.Character
+    if tool and tool.Parent ~= character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            pcall(function()
+                humanoid:EquipTool(tool)
+            end)
+        end
+    end
+end
+
+local function getHands()
+    local char = LocalPlayer.Character
+    if not char then return nil, nil end
+    local right = char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
+    local left  = char:FindFirstChild("LeftHand")  or char:FindFirstChild("Left Arm")
+    return left, right
+end
+
+task.spawn(function()
+    task.wait(0.5)
+    while true do
+        local character = LocalPlayer.Character
+        local backpack = LocalPlayer:FindFirstChild("Backpack")
+        if character and backpack then
+            equipPunchTool()
+            local tool = getPunchTool()
+            if tool and tool.Parent == character then
+                pcall(function()
+                    tool:Activate()
+                end)
+            end
+            for _, target in ipairs(Players:GetPlayers()) do
+                if target ~= LocalPlayer and not playerWhitelist[target.Name] then
+                    local tchar = target.Character
+                    if tchar then
+                        local humanoid = tchar:FindFirstChildOfClass("Humanoid")
+                        local rootPart = tchar:FindFirstChild("HumanoidRootPart")
+                        if humanoid and rootPart and humanoid.Health > 0 then
+                            local leftHand, rightHand = getHands()
+                            if leftHand and rightHand then
+                                pcall(function()
+                                    firetouchinterest(rightHand, rootPart, 1)
+                                    firetouchinterest(leftHand, rootPart, 1)
+                                    firetouchinterest(rightHand, rootPart, 0)
+                                    firetouchinterest(leftHand, rootPart, 0)
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(ATTACK_DELAY)
+    end
+end)
+
+local function find16PlayerServer()
+    local cursor = nil
+    repeat
+        local url = "https://games.roblox.com/v1/games/"..placeId.."/servers/Public?sortOrder=Desc&limit=100"
+        if cursor then
+            url = url.."&cursor="..cursor
+        end
+        local success, response = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(url))
+        end)
+        if success and response and response.data then
+            for _, server in ipairs(response.data) do
+                if server.playing == 16 and server.maxPlayers == 20 and server.id ~= game.JobId then
+                    return server.id
+                end
+            end
+            cursor = response.nextPageCursor
+        else
+            break
+        end
+    until not cursor
+    return nil
+end
+
+local function hopToServer()
+    task.spawn(function()
+        while true do
+            local serverId = find16PlayerServer()
+            if serverId then
+                local ok = false
+                local success, err = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(placeId, serverId, LocalPlayer)
+                end)
+                if success then
+                    ok = true
+                end
+                if ok then
+                    break
+                end
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+local function setupDiedListener(character)
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.Died:Connect(hopToServer)
+    else
+        character.ChildAdded:Connect(function(child)
+            if child:IsA("Humanoid") then
+                child.Died:Connect(hopToServer)
+            end
+        end)
+    end
+end
+
+if LocalPlayer.Character then
+    setupDiedListener(LocalPlayer.Character)
+end
+
+LocalPlayer.CharacterAdded:Connect(setupDiedListener)
+
+task.spawn(function()
+    while true do
+        task.wait(AUTO_HOP_DELAY)
+        hopToServer()
+    end
+end)
